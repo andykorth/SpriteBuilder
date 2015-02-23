@@ -32,6 +32,16 @@ def get_template_files
     end
 end
 
+def call_xctool command
+    reporter = "-reporter pretty"
+
+    if ENV["CIRCLE_CI"]
+        reporter = "-reporter plain -reporter junit:test_results.xml"
+    end
+
+    sh "xctool #{reporter} #{command}"
+end
+
 def get_artifact_name
     return @artifact_name if @artifact_name
     branch = `git rev-parse --abbrev-ref HEAD`.chomp
@@ -92,7 +102,9 @@ file "Generated/Version.txt" => "Generated" do |task|
     version_info["version"] = DEFAULT_SB_VERSION
     version_info["revision"] = ENV["REVISION"] || `git rev-parse --short=10 HEAD`.chomp
 
-    File.open("Generated/Version.txt","w") << JSON.pretty_generate(version_info)
+    f = File.open("Generated/Version.txt","w")
+    f.write JSON.pretty_generate(version_info)
+    f.close
 end
 
 file "Generated/cocos2d_version.txt" => 'SpriteBuilder/libs/cocos2d-iphone/VERSION' do |task|
@@ -115,7 +127,7 @@ namespace :build do
     end
 
     task :tests => [:generated,:build_requirements] do
-        sh "xctool -configuration Testing build-tests"
+        call_xctool "-configuration Testing build-tests"
     end
 end
 
@@ -123,20 +135,20 @@ task :default => "build:generated"
 
 desc "Run SpriteBuilder unit tests"
 task :test => ["build:tests", :build_requirements] do
-    sh "xctool -configuration Testing run-tests"
+    call_xctool "-configuration Testing run-tests"
 end
 
 namespace :package do
     desc "Create SpriteBuilder.app + zip app and symbols"
     task :app do
-        sh "xctool TARGET_BUILD_DIR=#{BUILD_DIR} CONFIGURATION_BUILD_DIR=#{BUILD_DIR} VERSION=#{DEFAULT_SB_VERSION} -configuration Release build"
+        call_xctool "TARGET_BUILD_DIR=#{BUILD_DIR} CONFIGURATION_BUILD_DIR=#{BUILD_DIR} VERSION=#{DEFAULT_SB_VERSION} -configuration Release build"
         app, symbols = "NONE"
 
         built_files = `find . -name SpriteBuilder.app`.chomp.split "\n"
 
         app = built_files.max {|a,b| File.mtime(a) <=> File.mtime(b)}
         symbols = "#{app}.dSYM"
-        versioned_app_name = "#{DEFAULT_PRODUCT_NAME}-#{ENV["VERSION"]}.app"
+        versioned_app_name = "#{DEFAULT_PRODUCT_NAME}-#{DEFAULT_SB_VERSION}.app"
 
         unless File.exists? app and File.exists? symbols
             fail "Built products don't exist at #{app} and #{symbols}"
@@ -152,7 +164,7 @@ namespace :package do
 
     desc "Create SpriteBuilder.xcarchive and zip"
     task :archive do
-        sh "xctool TARGET_BUILD_DIR=#{BUILD_DIR} VERSION='#{DEFAULT_SB_VERSION}' -configuration Release archive -archivePath #{BUILD_DIR}/SpriteBuilder"
+        call_xctool "TARGET_BUILD_DIR=#{BUILD_DIR} VERSION='#{DEFAULT_SB_VERSION}' -configuration Release archive -archivePath #{BUILD_DIR}/SpriteBuilder"
 
         Dir.chdir BUILD_DIR do
             sh "zip -r SpriteBuilder.xcarchive.zip SpriteBuilder.xcarchive"
@@ -163,10 +175,10 @@ end
 desc "Build SpriteBuilder distribution"
 task :package => [:clobber, BUILD_DIR, :build_requirements] do
 
-    #force generation of a new Version.txt with commandline value
+    #force generation of a new Version.txt 
     Rake::Task["build:generated"].invoke
-
     Rake::Task["package:app"].invoke
+
     Rake::Task["clean"].invoke
     Rake::Task["package:archive"].invoke
 
