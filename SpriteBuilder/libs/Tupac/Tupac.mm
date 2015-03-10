@@ -90,7 +90,7 @@ typedef struct _PVRTexHeader
         cancelled_ = NO;
         imageFormat_ = kFCImageFormatPNG;
         self.outputFormat = TupacOutputFormatCocos2D;
-        self.maxTextureSize = 2048;
+        self.maxTextureSize = 4096;
         self.padding = 1;
         self.trim = YES;
     }
